@@ -2,25 +2,37 @@ package com.ygmpkk.flutter_umplus;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.text.TextUtils;
 import android.util.Log;
+
+import androidx.annotation.NonNull;
+
 import com.umeng.analytics.MobclickAgent;
 import com.umeng.commonsdk.UMConfigure;
 import com.umeng.commonsdk.statistics.common.DeviceConfig;
+import com.umeng.socialize.PlatformConfig;
+import com.umeng.socialize.ShareAction;
+import com.umeng.socialize.UMShareAPI;
+import com.umeng.socialize.bean.SHARE_MEDIA;
+import com.umeng.socialize.media.UMImage;
+import com.umeng.socialize.media.UMWeb;
+
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
-import io.flutter.plugin.common.PluginRegistry.Registrar;
-import io.flutter.embedding.engine.plugins.FlutterPlugin;
-import io.flutter.embedding.engine.plugins.activity.ActivityAware;
-import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
-import androidx.annotation.NonNull;
+import io.flutter.plugin.common.PluginRegistry.ActivityResultListener;
+import io.flutter.plugin.common.PluginRegistry.RequestPermissionsResultListener;
 
 /** FlutterUmplusPlugin */
-public class FlutterUmplusPlugin implements MethodCallHandler,FlutterPlugin,ActivityAware {
+public class FlutterUmplusPlugin implements MethodCallHandler,FlutterPlugin,ActivityAware,ActivityResultListener {
   private Activity activity;
   private MethodChannel channel;
 
@@ -38,7 +50,30 @@ public class FlutterUmplusPlugin implements MethodCallHandler,FlutterPlugin,Acti
       result.success("Android " + android.os.Build.VERSION.RELEASE);
     } else if (call.method.equals("init")) {
       initSetup(call, result);
-    } else if (call.method.equals("beginPageView")) {
+    }
+    else if (call.method.equals("share")) {
+      String plat = call.argument("plat");
+      String title = call.argument("title");
+      String desc = call.argument("desc");
+      String icon = call.argument("icon");
+      String webUrl = call.argument("webUrl");
+      UMImage thumb=null;
+      if(icon!=null&&!TextUtils.isEmpty(icon)){
+        thumb = new UMImage(activity, icon);
+      }
+      UMWeb web = new UMWeb(webUrl);
+      web.setTitle(title);//标题
+      if(thumb!=null) {
+        web.setThumb(thumb);//缩略图
+      }
+      web.setDescription(desc);//描述
+      new ShareAction(activity)
+      .setPlatform(getPlat(plat))
+              .withMedia(web)
+              .setCallback(new UmengshareActionListener(result))
+              .share();
+    }
+    else if (call.method.equals("beginPageView")) {
       beginPageView(call, result);
     } else if (call.method.equals("endPageView")) {
       endPageView(call, result);
@@ -51,6 +86,25 @@ public class FlutterUmplusPlugin implements MethodCallHandler,FlutterPlugin,Acti
     }
   }
 
+  private SHARE_MEDIA getPlat(String plat) {
+    if(plat==null){
+      return  null;
+    }
+    switch (plat.toLowerCase()){
+      case "qq":
+        return SHARE_MEDIA.QQ;
+      case "q_zone":
+        return SHARE_MEDIA.QZONE;
+      case "wx":
+        return SHARE_MEDIA.WEIXIN;
+      case "wx_circle":
+        return SHARE_MEDIA.WEIXIN_CIRCLE;
+      case "sina":
+        return SHARE_MEDIA.SINA;
+    }
+    return null;
+  }
+
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
     channel.setMethodCallHandler(null);
@@ -60,6 +114,7 @@ public class FlutterUmplusPlugin implements MethodCallHandler,FlutterPlugin,Acti
   @Override
   public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
     activity = binding.getActivity();
+    binding.addActivityResultListener(this);
   }
 
   @Override
@@ -95,6 +150,12 @@ public class FlutterUmplusPlugin implements MethodCallHandler,FlutterPlugin,Acti
     private void initSetup(MethodCall call, Result result) {
     String appKey = (String)call.argument("key");
     String channel = (String)call.argument("channel");
+    String wxAppKey = (String)call.argument("wxAppKey");
+    String wxAppSecret = (String)call.argument("wxAppSecret");
+      String qqAppID = (String)call.argument("qqAppID");
+    String qqAppKey = (String)call.argument("qqAppKey");
+    String wbAppKey = (String)call.argument("wbAppKey");
+    String wbAppSecret = (String)call.argument("wbAppSecret");
     Boolean logEnable = (Boolean)call.argument("logEnable");
     Boolean encrypt = (Boolean)call.argument("encrypt");
     Boolean reportCrash = (Boolean)call.argument("reportCrash");
@@ -105,6 +166,10 @@ public class FlutterUmplusPlugin implements MethodCallHandler,FlutterPlugin,Acti
     UMConfigure.setLogEnabled(logEnable);
     UMConfigure.init(activity, appKey, channel, UMConfigure.DEVICE_TYPE_PHONE,
                      null);
+    PlatformConfig.setWeixin(wxAppKey, wxAppSecret);
+    PlatformConfig.setSinaWeibo(wbAppKey, wbAppSecret,null);
+    PlatformConfig.setQQZone(qqAppID, qqAppKey);
+    PlatformConfig.setQQFileProvider("com.ygmpkk.flutter_umplus.fileprovider");
     UMConfigure.setEncryptEnabled(encrypt);
 
     MobclickAgent.setSessionContinueMillis(30000L);
@@ -169,4 +234,13 @@ public class FlutterUmplusPlugin implements MethodCallHandler,FlutterPlugin,Acti
     }
     return deviceInfo;
   }
+
+  @Override
+  public boolean onActivityResult(int i, int i1, Intent intent) {
+    UMShareAPI.get(activity).onActivityResult(i, i1, intent);
+    return false;
+  }
+
+
+
 }
